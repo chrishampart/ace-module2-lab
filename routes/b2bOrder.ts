@@ -18,7 +18,27 @@ export function b2bOrder () {
     if (utils.isChallengeEnabled(challenges.rceChallenge) || utils.isChallengeEnabled(challenges.rceOccupyChallenge)) {
       const orderLinesData = body.orderLinesData || ''
       try {
-        const sandbox = { safeEval, orderLinesData }
+        let isJson = false
+        if (typeof orderLinesData === 'string') {
+          try {
+            JSON.parse(orderLinesData)
+            isJson = true
+          } catch {
+            // Not valid JSON, continue with validation
+          }
+        }
+
+        if (!isJson) {
+          const rawData = typeof orderLinesData === 'string' ? orderLinesData : JSON.stringify(orderLinesData)
+          const normalizedData = rawData
+            .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+            .replace(/\\x([0-9a-fA-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+          if (/(?:this|constructor|prototype|__proto__|process|mainModule|require|child_process|exec|spawn|Function|global)/i.test(normalizedData)) {
+            throw new Error('Sandbox breakout detected')
+          }
+        }
+
+        const sandbox = Object.assign(Object.create(null), { safeEval, orderLinesData })
         vm.createContext(sandbox)
         vm.runInContext('safeEval(orderLinesData)', sandbox, { timeout: 2000 })
         res.json({ cid: body.cid, orderNo: uniqueOrderNumber(), paymentDue: dateTwoWeeksFromNow() })
